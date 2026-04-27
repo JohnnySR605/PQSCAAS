@@ -1,0 +1,13 @@
+<!-- PQSCAAS Enclave Configuration -->
+<EnclaveConfiguration>
+  <ProdID>0</ProdID>
+  <ISVSVN>1</ISVSVN>
+  <!-- Heap: generous for large key tables and ciphertexts -->
+  <StackMaxSize>0x100000</StackMaxSize>
+  <HeapMaxSize>0x10000000</HeapMaxSize>
+  <TCSNum>32</TCSNum>
+  <TCSPolicy>1</TCSPolicy>
+  <DisableDebug>0</DisableDebug>
+  <MiscSelect>0</MiscSelect>
+  <MiscMask>0xFFFFFFFF</MiscMask>
+</EnclaveConfiguration>

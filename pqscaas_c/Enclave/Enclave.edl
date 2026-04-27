@@ -1,0 +1,127 @@
+/*
+ * PQSCAAS Enclave Interface Definition (EDL)
+ *
+ * Defines ECALLs (Normal World -> Enclave) and OCALLs (Enclave -> Normal World)
+ * for all PQSCAAS trusted operations.
+ */
+
+enclave {
+    from "sgx_tstdc.edl" import *;
+
+    include "pqscaas_types.h"
+
+    trusted {
+        /* ================================================================
+         * ECALL 1: Phase 2 — Key Generation
+         * Generate (pk_u^KEM, sk_u^KEM) and (pk_u^SIG, sk_u^SIG) for user.
+         * Private keys sealed to enclave.
+         * ================================================================ */
+        public int ecall_phase2_keygen(
+            [in, size=32]  const uint8_t *user_id,
+            [out, size=1184] uint8_t *pk_kem,
+            [out, size=1952]  uint8_t *pk_sig,
+            [out, size=2976] uint8_t *sealed_sk_kem,
+            [out, size=4608] uint8_t *sealed_sk_sig
+        );
+
+        /* ================================================================
+         * ECALL 2: Phase 4 — Single Signcryption (for baseline test)
+         * Given a descriptor and recipient public key, produce signcrypted.
+         * ================================================================ */
+        public int ecall_phase4_signcrypt_single(
+            [in]  const pqscaas_descriptor_t *desc,
+            [in, size=1184] const uint8_t *pk_r_kem,
+            [in, size=4608]      const uint8_t *sealed_sk_u_sig,
+            [out] pqscaas_signcrypted_t *out_sc
+        );
+
+        /* ================================================================
+         * ECALL 3: Phase 4 — Batch Signcryption
+         * Amortizes enclave enter/exit overhead across N requests.
+         * ================================================================ */
+        public int ecall_phase4_signcrypt_batch(
+            [in, count=n_desc] const pqscaas_descriptor_t *descriptors,
+            size_t n_desc,
+            [in, size=1184] const uint8_t *pk_r_kem,
+            [in, size=4608]      const uint8_t *sealed_sk_u_sig,
+            [out, count=n_desc] pqscaas_signcrypted_t *out_sc
+        );
+
+        /* ================================================================
+         * ECALL 4: Phase 5 — Unsigncryption (verify + unwrap)
+         * Recipient-side operation. Verifies signature, recovers K_d.
+         * NOTE: This runs client-side in practice but uses same enclave API
+         *       for consistent measurement.
+         * ================================================================ */
+        public int ecall_phase5_unsigncrypt(
+            [in]  const pqscaas_signcrypted_t *sc,
+            [in, size=1952]  const uint8_t *pk_u_sig,
+            [in, size=2976]      const uint8_t *sealed_sk_r_kem,
+            [out, size=32] uint8_t *k_d_out
+        );
+
+        /* ================================================================
+         * ECALL 5: Phase 6 — Revocation (lazy)
+         * Adds user to revocation list inside enclave.
+         * ================================================================ */
+        public int ecall_revoke_user(
+            [in, size=32] const uint8_t *user_id
+        );
+
+        /* ================================================================
+         * ECALL 6: Phase 6 — Check revocation
+         * Returns 1 if revoked, 0 otherwise.
+         * ================================================================ */
+        public int ecall_is_revoked(
+            [in, size=32] const uint8_t *user_id
+        );
+
+        /* ================================================================
+         * ECALL 7: Phase 6 — Non-lazy revocation (rebinding cost)
+         * Rebinds all active ciphertexts. Used for comparison benchmark.
+         * Returns elapsed ns inside enclave.
+         * ================================================================ */
+        public int ecall_revoke_rebind_all(
+            uint32_t n_active_users,
+            uint32_t n_revoked,
+            [out] uint64_t *elapsed_ns
+        );
+
+        /* ================================================================
+         * ECALL 8: Phase 2 — Batch keygen (parallel enclaves simulated)
+         * Generates N users' keys. Returns total wall time per batch.
+         * ================================================================ */
+        public int ecall_phase2_keygen_batch(
+            uint32_t n_users,
+            [out] uint64_t *elapsed_ns_per_key
+        );
+
+        /* ================================================================
+         * ECALL 9: Lightweight benchmarking helpers
+         * Used for measuring individual primitive costs.
+         * ================================================================ */
+        public int ecall_bench_ml_kem_keygen([out] uint64_t *ns);
+        public int ecall_bench_ml_kem_encap([out] uint64_t *ns);
+        public int ecall_bench_ml_kem_decap([out] uint64_t *ns);
+        public int ecall_bench_ml_dsa_keygen([out] uint64_t *ns);
+        public int ecall_bench_ml_dsa_sign([out] uint64_t *ns);
+        public int ecall_bench_ml_dsa_verify([out] uint64_t *ns);
+        public int ecall_bench_seal_unseal([out] uint64_t *seal_ns, [out] uint64_t *unseal_ns);
+
+        /* ================================================================
+         * ECALL 10: Enclave init/teardown
+         * ================================================================ */
+        public int ecall_enclave_init();
+        public int ecall_enclave_reset();
+    };
+
+    untrusted {
+        /* OCALLs — enclave calls out to untrusted world */
+        void ocall_print_string([in, string] const char *str);
+        /* Use [out] pointer instead of return value — return-value OCALLs
+         * have caused subtle issues in SGX-SIM mode where the retval slot
+         * was not consistently populated.  An [out] pointer is explicit
+         * and well-tested. */
+        void ocall_get_time_ns([out] uint64_t *t);
+    };
+};
